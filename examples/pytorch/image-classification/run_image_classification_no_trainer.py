@@ -37,11 +37,18 @@ from torchvision.transforms import (
     RandomResizedCrop,
     Resize,
     ToTensor,
+    Lambda,
 )
 from tqdm.auto import tqdm
 
 import transformers
-from transformers import AutoConfig, AutoImageProcessor, AutoModelForImageClassification, SchedulerType, get_scheduler
+from transformers import (
+    AutoConfig,
+    AutoImageProcessor,
+    AutoModelForImageClassification,
+    SchedulerType,
+    get_scheduler,
+)
 from transformers.utils import check_min_version, get_full_repo_name, send_example_telemetry
 from transformers.utils.versions import require_version
 
@@ -51,11 +58,16 @@ check_min_version("4.31.0.dev0")
 
 logger = get_logger(__name__)
 
-require_version("datasets>=2.0.0", "To fix: pip install -r examples/pytorch/image-classification/requirements.txt")
+require_version(
+    "datasets>=2.0.0",
+    "To fix: pip install -r examples/pytorch/image-classification/requirements.txt",
+)
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Fine-tune a Transformers model on an image classification dataset")
+    parser = argparse.ArgumentParser(
+        description="Fine-tune a Transformers model on an image classification dataset"
+    )
     parser.add_argument(
         "--dataset_name",
         type=str,
@@ -65,8 +77,12 @@ def parse_args():
             " dataset)."
         ),
     )
-    parser.add_argument("--train_dir", type=str, default=None, help="A folder containing the training data.")
-    parser.add_argument("--validation_dir", type=str, default=None, help="A folder containing the validation data.")
+    parser.add_argument(
+        "--train_dir", type=str, default=None, help="A folder containing the training data."
+    )
+    parser.add_argument(
+        "--validation_dir", type=str, default=None, help="A folder containing the validation data."
+    )
     parser.add_argument(
         "--max_train_samples",
         type=int,
@@ -116,7 +132,12 @@ def parse_args():
         help="Initial learning rate (after the potential warmup period) to use.",
     )
     parser.add_argument("--weight_decay", type=float, default=0.0, help="Weight decay to use.")
-    parser.add_argument("--num_train_epochs", type=int, default=3, help="Total number of training epochs to perform.")
+    parser.add_argument(
+        "--num_train_epochs",
+        type=int,
+        default=3,
+        help="Total number of training epochs to perform.",
+    )
     parser.add_argument(
         "--max_train_steps",
         type=int,
@@ -134,16 +155,32 @@ def parse_args():
         type=SchedulerType,
         default="linear",
         help="The scheduler type to use.",
-        choices=["linear", "cosine", "cosine_with_restarts", "polynomial", "constant", "constant_with_warmup"],
+        choices=[
+            "linear",
+            "cosine",
+            "cosine_with_restarts",
+            "polynomial",
+            "constant",
+            "constant_with_warmup",
+        ],
     )
     parser.add_argument(
-        "--num_warmup_steps", type=int, default=0, help="Number of steps for the warmup in the lr scheduler."
+        "--num_warmup_steps",
+        type=int,
+        default=0,
+        help="Number of steps for the warmup in the lr scheduler.",
     )
-    parser.add_argument("--output_dir", type=str, default=None, help="Where to store the final model.")
+    parser.add_argument(
+        "--output_dir", type=str, default=None, help="Where to store the final model."
+    )
     parser.add_argument("--seed", type=int, default=None, help="A seed for reproducible training.")
-    parser.add_argument("--push_to_hub", action="store_true", help="Whether or not to push the model to the Hub.")
     parser.add_argument(
-        "--hub_model_id", type=str, help="The name of the repository to keep in sync with the local `output_dir`."
+        "--push_to_hub", action="store_true", help="Whether or not to push the model to the Hub."
+    )
+    parser.add_argument(
+        "--hub_model_id",
+        type=str,
+        help="The name of the repository to keep in sync with the local `output_dir`.",
     )
     parser.add_argument("--hub_token", type=str, help="The token to use to push to the Model Hub.")
     parser.add_argument(
@@ -212,7 +249,9 @@ def main():
         accelerator_log_kwargs["log_with"] = args.report_to
         accelerator_log_kwargs["project_dir"] = args.output_dir
 
-    accelerator = Accelerator(gradient_accumulation_steps=args.gradient_accumulation_steps, **accelerator_log_kwargs)
+    accelerator = Accelerator(
+        gradient_accumulation_steps=args.gradient_accumulation_steps, **accelerator_log_kwargs
+    )
 
     logger.info(accelerator.state)
     # Make one log on every process with the configuration for debugging.
@@ -314,41 +353,45 @@ def main():
         size = image_processor.size["shortest_edge"]
     else:
         size = (image_processor.size["height"], image_processor.size["width"])
-    normalize = Normalize(mean=image_processor.image_mean, std=image_processor.image_std)
-    train_transforms = Compose(
-        [
-            RandomResizedCrop(size),
-            RandomHorizontalFlip(),
-            ToTensor(),
-            normalize,
-        ]
-    )
-    val_transforms = Compose(
-        [
-            Resize(size),
-            CenterCrop(size),
-            ToTensor(),
-            normalize,
-        ]
-    )
+    train_compose = [RandomResizedCrop(size), RandomHorizontalFlip(), ToTensor()]
+    val_compose = [Resize(size), CenterCrop(size), ToTensor()]
+    if image_processor.image_mean:
+        normalize = Normalize(mean=image_processor.image_mean, std=image_processor.image_std)
+        val_compose.append(normalize)
+        train_compose.append(normalize)
+    if image_processor.do_flip_chanel_order:
+        flip = Lambda(lambda img: img.flip(-3))
+        val_compose.append(flip)
+        train_compose.append(flip)
+
+    train_transforms = Compose(train_compose)
+    val_transforms = Compose(val_compose)
 
     def preprocess_train(example_batch):
         """Apply _train_transforms across a batch."""
-        example_batch["pixel_values"] = [train_transforms(image.convert("RGB")) for image in example_batch["image"]]
+        example_batch["pixel_values"] = [
+            train_transforms(image.convert("RGB")) for image in example_batch["image"]
+        ]
         return example_batch
 
     def preprocess_val(example_batch):
         """Apply _val_transforms across a batch."""
-        example_batch["pixel_values"] = [val_transforms(image.convert("RGB")) for image in example_batch["image"]]
+        example_batch["pixel_values"] = [
+            val_transforms(image.convert("RGB")) for image in example_batch["image"]
+        ]
         return example_batch
 
     with accelerator.main_process_first():
         if args.max_train_samples is not None:
-            dataset["train"] = dataset["train"].shuffle(seed=args.seed).select(range(args.max_train_samples))
+            dataset["train"] = (
+                dataset["train"].shuffle(seed=args.seed).select(range(args.max_train_samples))
+            )
         # Set the training transforms
         train_dataset = dataset["train"].with_transform(preprocess_train)
         if args.max_eval_samples is not None:
-            dataset["validation"] = dataset["validation"].shuffle(seed=args.seed).select(range(args.max_eval_samples))
+            dataset["validation"] = (
+                dataset["validation"].shuffle(seed=args.seed).select(range(args.max_eval_samples))
+            )
         # Set the validation transforms
         eval_dataset = dataset["validation"].with_transform(preprocess_val)
 
@@ -359,16 +402,23 @@ def main():
         return {"pixel_values": pixel_values, "labels": labels}
 
     train_dataloader = DataLoader(
-        train_dataset, shuffle=True, collate_fn=collate_fn, batch_size=args.per_device_train_batch_size
+        train_dataset,
+        shuffle=True,
+        collate_fn=collate_fn,
+        batch_size=args.per_device_train_batch_size,
     )
-    eval_dataloader = DataLoader(eval_dataset, collate_fn=collate_fn, batch_size=args.per_device_eval_batch_size)
+    eval_dataloader = DataLoader(
+        eval_dataset, collate_fn=collate_fn, batch_size=args.per_device_eval_batch_size
+    )
 
     # Optimizer
     # Split weights in two groups, one with weight decay and the other not.
     no_decay = ["bias", "LayerNorm.weight"]
     optimizer_grouped_parameters = [
         {
-            "params": [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
+            "params": [
+                p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)
+            ],
             "weight_decay": args.weight_decay,
         },
         {
@@ -421,13 +471,19 @@ def main():
     metric = evaluate.load("accuracy")
 
     # Train!
-    total_batch_size = args.per_device_train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
+    total_batch_size = (
+        args.per_device_train_batch_size
+        * accelerator.num_processes
+        * args.gradient_accumulation_steps
+    )
 
     logger.info("***** Running training *****")
     logger.info(f"  Num examples = {len(train_dataset)}")
     logger.info(f"  Num Epochs = {args.num_train_epochs}")
     logger.info(f"  Instantaneous batch size per device = {args.per_device_train_batch_size}")
-    logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
+    logger.info(
+        f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}"
+    )
     logger.info(f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}")
     logger.info(f"  Total optimization steps = {args.max_train_steps}")
     # Only show the progress bar once on each machine.
@@ -454,7 +510,9 @@ def main():
             completed_steps = starting_epoch * num_update_steps_per_epoch
         else:
             # need to multiply `gradient_accumulation_steps` to reflect real steps
-            resume_step = int(training_difference.replace("step_", "")) * args.gradient_accumulation_steps
+            resume_step = (
+                int(training_difference.replace("step_", "")) * args.gradient_accumulation_steps
+            )
             starting_epoch = resume_step // len(train_dataloader)
             resume_step -= starting_epoch * len(train_dataloader)
             completed_steps = resume_step // args.gradient_accumulation_step
@@ -543,12 +601,16 @@ def main():
             accelerator.wait_for_everyone()
             unwrapped_model = accelerator.unwrap_model(model)
             unwrapped_model.save_pretrained(
-                args.output_dir, is_main_process=accelerator.is_main_process, save_function=accelerator.save
+                args.output_dir,
+                is_main_process=accelerator.is_main_process,
+                save_function=accelerator.save,
             )
             if accelerator.is_main_process:
                 image_processor.save_pretrained(args.output_dir)
                 repo.push_to_hub(
-                    commit_message=f"Training in progress epoch {epoch}", blocking=False, auto_lfs_prune=True
+                    commit_message=f"Training in progress epoch {epoch}",
+                    blocking=False,
+                    auto_lfs_prune=True,
                 )
 
         if args.checkpointing_steps == "epoch":
@@ -564,7 +626,9 @@ def main():
         accelerator.wait_for_everyone()
         unwrapped_model = accelerator.unwrap_model(model)
         unwrapped_model.save_pretrained(
-            args.output_dir, is_main_process=accelerator.is_main_process, save_function=accelerator.save
+            args.output_dir,
+            is_main_process=accelerator.is_main_process,
+            save_function=accelerator.save,
         )
         if accelerator.is_main_process:
             image_processor.save_pretrained(args.output_dir)

@@ -22,7 +22,14 @@ from typing import Optional
 import numpy as np
 import torch
 from datasets import load_dataset
-from torchvision.transforms import Compose, Lambda, Normalize, RandomHorizontalFlip, RandomResizedCrop, ToTensor
+from torchvision.transforms import (
+    Compose,
+    Lambda,
+    Normalize,
+    RandomHorizontalFlip,
+    RandomResizedCrop,
+    ToTensor,
+)
 
 import transformers
 from transformers import (
@@ -50,7 +57,9 @@ logger = logging.getLogger(__name__)
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.31.0.dev0")
 
-require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/image-pretraining/requirements.txt")
+require_version(
+    "datasets>=1.8.0", "To fix: pip install -r examples/pytorch/image-pretraining/requirements.txt"
+)
 
 MODEL_CONFIG_CLASSES = list(MODEL_FOR_MASKED_IMAGE_MODELING_MAPPING.keys())
 MODEL_TYPES = tuple(conf.model_type for conf in MODEL_CONFIG_CLASSES)
@@ -68,18 +77,29 @@ class DataTrainingArguments:
         default="cifar10", metadata={"help": "Name of a dataset from the datasets package"}
     )
     dataset_config_name: Optional[str] = field(
-        default=None, metadata={"help": "The configuration name of the dataset to use (via the datasets library)."}
+        default=None,
+        metadata={
+            "help": "The configuration name of the dataset to use (via the datasets library)."
+        },
     )
     image_column_name: Optional[str] = field(
         default=None,
-        metadata={"help": "The column name of the images in the files. If not set, will try to use 'image' or 'img'."},
+        metadata={
+            "help": "The column name of the images in the files. If not set, will try to use 'image' or 'img'."
+        },
     )
-    train_dir: Optional[str] = field(default=None, metadata={"help": "A folder containing the training data."})
-    validation_dir: Optional[str] = field(default=None, metadata={"help": "A folder containing the validation data."})
+    train_dir: Optional[str] = field(
+        default=None, metadata={"help": "A folder containing the training data."}
+    )
+    validation_dir: Optional[str] = field(
+        default=None, metadata={"help": "A folder containing the validation data."}
+    )
     train_val_split: Optional[float] = field(
         default=0.15, metadata={"help": "Percent to split off of train for validation."}
     )
-    mask_patch_size: int = field(default=32, metadata={"help": "The size of the square patches to use for masking."})
+    mask_patch_size: int = field(
+        default=32, metadata={"help": "The size of the square patches to use for masking."}
+    )
     mask_ratio: float = field(
         default=0.6,
         metadata={"help": "Percentage of patches to mask."},
@@ -130,10 +150,14 @@ class ModelArguments:
     )
     model_type: Optional[str] = field(
         default=None,
-        metadata={"help": "If training from scratch, pass a model type from the list: " + ", ".join(MODEL_TYPES)},
+        metadata={
+            "help": "If training from scratch, pass a model type from the list: "
+            + ", ".join(MODEL_TYPES)
+        },
     )
     config_name_or_path: Optional[str] = field(
-        default=None, metadata={"help": "Pretrained config name or path if not the same as model_name"}
+        default=None,
+        metadata={"help": "Pretrained config name or path if not the same as model_name"},
     )
     config_overrides: Optional[str] = field(
         default=None,
@@ -146,13 +170,19 @@ class ModelArguments:
     )
     cache_dir: Optional[str] = field(
         default=None,
-        metadata={"help": "Where do you want to store (cache) the pretrained models/datasets downloaded from the hub"},
+        metadata={
+            "help": "Where do you want to store (cache) the pretrained models/datasets downloaded from the hub"
+        },
     )
     model_revision: str = field(
         default="main",
-        metadata={"help": "The specific model version to use (can be a branch name, tag name or commit id)."},
+        metadata={
+            "help": "The specific model version to use (can be a branch name, tag name or commit id)."
+        },
     )
-    image_processor_name: str = field(default=None, metadata={"help": "Name or path of preprocessor config."})
+    image_processor_name: str = field(
+        default=None, metadata={"help": "Name or path of preprocessor config."}
+    )
     use_auth_token: bool = field(
         default=False,
         metadata={
@@ -235,7 +265,9 @@ def main():
     if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
         # If we pass only one argument to the script and it's the path to a json file,
         # let's parse it to get our arguments.
-        model_args, data_args, training_args = parser.parse_json_file(json_file=os.path.abspath(sys.argv[1]))
+        model_args, data_args, training_args = parser.parse_json_file(
+            json_file=os.path.abspath(sys.argv[1])
+        )
     else:
         model_args, data_args, training_args = parser.parse_args_into_dataclasses()
 
@@ -269,7 +301,11 @@ def main():
 
     # Detecting last checkpoint.
     last_checkpoint = None
-    if os.path.isdir(training_args.output_dir) and training_args.do_train and not training_args.overwrite_output_dir:
+    if (
+        os.path.isdir(training_args.output_dir)
+        and training_args.do_train
+        and not training_args.overwrite_output_dir
+    ):
         last_checkpoint = get_last_checkpoint(training_args.output_dir)
         if last_checkpoint is None and len(os.listdir(training_args.output_dir)) > 0:
             raise ValueError(
@@ -324,10 +360,16 @@ def main():
         config.decoder_type = "simmim"
 
     # adapt config
-    model_args.image_size = model_args.image_size if model_args.image_size is not None else config.image_size
-    model_args.patch_size = model_args.patch_size if model_args.patch_size is not None else config.patch_size
+    model_args.image_size = (
+        model_args.image_size if model_args.image_size is not None else config.image_size
+    )
+    model_args.patch_size = (
+        model_args.patch_size if model_args.patch_size is not None else config.patch_size
+    )
     model_args.encoder_stride = (
-        model_args.encoder_stride if model_args.encoder_stride is not None else config.encoder_stride
+        model_args.encoder_stride
+        if model_args.encoder_stride is not None
+        else config.encoder_stride
     )
 
     config.update(
@@ -340,12 +382,17 @@ def main():
 
     # create image processor
     if model_args.image_processor_name:
-        image_processor = AutoImageProcessor.from_pretrained(model_args.image_processor_name, **config_kwargs)
+        image_processor = AutoImageProcessor.from_pretrained(
+            model_args.image_processor_name, **config_kwargs
+        )
     elif model_args.model_name_or_path:
-        image_processor = AutoImageProcessor.from_pretrained(model_args.model_name_or_path, **config_kwargs)
+        image_processor = AutoImageProcessor.from_pretrained(
+            model_args.model_name_or_path, **config_kwargs
+        )
     else:
         IMAGE_PROCESSOR_TYPES = {
-            conf.model_type: image_processor_class for conf, image_processor_class in IMAGE_PROCESSOR_MAPPING.items()
+            conf.model_type: image_processor_class
+            for conf, image_processor_class in IMAGE_PROCESSOR_MAPPING.items()
         }
         image_processor = IMAGE_PROCESSOR_TYPES[model_args.model_type]()
 
@@ -382,7 +429,9 @@ def main():
     transforms = Compose(
         [
             Lambda(lambda img: img.convert("RGB") if img.mode != "RGB" else img),
-            RandomResizedCrop(model_args.image_size, scale=(0.67, 1.0), ratio=(3.0 / 4.0, 4.0 / 3.0)),
+            RandomResizedCrop(
+                model_args.image_size, scale=(0.67, 1.0), ratio=(3.0 / 4.0, 4.0 / 3.0)
+            ),
             RandomHorizontalFlip(),
             ToTensor(),
             Normalize(mean=image_processor.image_mean, std=image_processor.image_std),
@@ -410,7 +459,11 @@ def main():
         if "train" not in ds:
             raise ValueError("--do_train requires a train dataset")
         if data_args.max_train_samples is not None:
-            ds["train"] = ds["train"].shuffle(seed=training_args.seed).select(range(data_args.max_train_samples))
+            ds["train"] = (
+                ds["train"]
+                .shuffle(seed=training_args.seed)
+                .select(range(data_args.max_train_samples))
+            )
         # Set the training transforms
         ds["train"].set_transform(preprocess_images)
 
@@ -419,7 +472,9 @@ def main():
             raise ValueError("--do_eval requires a validation dataset")
         if data_args.max_eval_samples is not None:
             ds["validation"] = (
-                ds["validation"].shuffle(seed=training_args.seed).select(range(data_args.max_eval_samples))
+                ds["validation"]
+                .shuffle(seed=training_args.seed)
+                .select(range(data_args.max_eval_samples))
             )
         # Set the validation transforms
         ds["validation"].set_transform(preprocess_images)
